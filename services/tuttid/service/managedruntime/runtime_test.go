@@ -78,8 +78,12 @@ func TestDefaultResolverUsesDefaultCatalogWhenUnset(t *testing.T) {
 		},
 	}.runtimeCatalogSource()
 
-	if source != defaultTuttiAppRuntimeCatalogURL {
-		t.Fatalf("runtimeCatalogSource() = %q, want %q", source, defaultTuttiAppRuntimeCatalogURL)
+	want := defaultTuttiAppRuntimeCatalogURL
+	if runtime.GOOS == "windows" {
+		want = defaultWindowsTuttiAppRuntimeCatalogURL
+	}
+	if source != want {
+		t.Fatalf("runtimeCatalogSource() = %q, want %q", source, want)
 	}
 }
 

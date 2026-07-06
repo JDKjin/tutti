@@ -26,6 +26,7 @@ const appRuntimeCatalogSchemaVersion = "tutti.app.runtimes.v2"
 const appRuntimeBaselineProfile = "baseline"
 const appRuntimeNodeStaticProfile = "node-static"
 const defaultTuttiAppRuntimeCatalogURL = "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-app-runtimes/catalog.json"
+const defaultWindowsTuttiAppRuntimeCatalogURL = "https://github.com/JDKjin/tutti/releases/latest/download/tutti-app-runtime-catalog.json"
 
 const NodeStaticProfile = appRuntimeNodeStaticProfile
 
@@ -317,6 +318,9 @@ func (r DefaultResolver) runtimeCatalogSource() string {
 		if ok && key == tuttiAppRuntimeCatalogEnv {
 			return strings.TrimSpace(value)
 		}
+	}
+	if runtime.GOOS == "windows" {
+		return defaultWindowsTuttiAppRuntimeCatalogURL
 	}
 	return defaultTuttiAppRuntimeCatalogURL
 }

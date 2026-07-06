@@ -358,8 +358,8 @@ func TestRemoteCatalogURLDefaultsToPublishedCatalog(t *testing.T) {
 	})
 	_ = os.Unsetenv(remoteCatalogURLEnv)
 
-	if got := remoteCatalogURL(); got != defaultRemoteCatalogURL {
-		t.Fatalf("remoteCatalogURL() = %q, want %q", got, defaultRemoteCatalogURL)
+	if got, want := remoteCatalogURL(), defaultRemoteCatalogURL(); got != want {
+		t.Fatalf("remoteCatalogURL() = %q, want %q", got, want)
 	}
 
 	_ = os.Setenv(remoteCatalogURLEnv, "")

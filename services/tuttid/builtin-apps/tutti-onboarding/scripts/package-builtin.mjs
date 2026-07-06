@@ -35,7 +35,8 @@ const requiredPackageFiles = [
   "tutti.app.json",
   "tutti-guide.md",
   "AGENTS.md",
-  "bootstrap.sh"
+  "bootstrap.sh",
+  "bootstrap.cmd"
 ];
 const cliSegmentPattern = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const defaultCliHandlerTimeoutMs = 30000;
@@ -97,7 +98,7 @@ async function packageBuiltin({ checkOnly = false } = {}) {
       `.${path.basename(zipPath)}.${process.pid}.${randomUUID()}.tmp`
     );
     try {
-      await run("zip", ["-qry", tempZipPath, "."], { cwd: packageRoot });
+      await createPackageZip(tempZipPath);
       await rename(tempZipPath, zipPath);
     } finally {
       await rm(tempZipPath, { force: true });
@@ -105,6 +106,57 @@ async function packageBuiltin({ checkOnly = false } = {}) {
     console.log(`Created ${zipPath}`);
     return zipPath;
   });
+}
+
+async function createPackageZip(zipPath) {
+  if (process.platform === "win32") {
+    const compressArchivePath = `${zipPath}.zip`;
+    await rm(compressArchivePath, { force: true });
+    await run(
+      "powershell",
+      [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        `
+$ErrorActionPreference = 'Stop'
+$root = (Resolve-Path -LiteralPath '.').Path
+$destination = $env:TUTTI_PACKAGE_ZIP_PATH
+if (Test-Path -LiteralPath $destination) {
+  Remove-Item -LiteralPath $destination -Force
+}
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$stream = [System.IO.File]::Open($destination, [System.IO.FileMode]::CreateNew)
+try {
+  $archive = New-Object System.IO.Compression.ZipArchive($stream, [System.IO.Compression.ZipArchiveMode]::Create)
+  try {
+    Get-ChildItem -Force -LiteralPath $root -Recurse -File | ForEach-Object {
+      $relative = $_.FullName.Substring($root.Length).TrimStart('\\', '/')
+      $entryName = $relative.Replace('\\', '/')
+      [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $_.FullName, $entryName, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+    }
+  } finally {
+    $archive.Dispose()
+  }
+} finally {
+  $stream.Dispose()
+}
+`.trim()
+      ],
+      {
+        cwd: packageRoot,
+        env: {
+          ...process.env,
+          TUTTI_PACKAGE_ZIP_PATH: compressArchivePath
+        }
+      }
+    );
+    await rename(compressArchivePath, zipPath);
+    return;
+  }
+  await run("zip", ["-qry", zipPath, "."], { cwd: packageRoot });
 }
 
 async function withPackageLock(callback) {
@@ -243,6 +295,10 @@ async function writePackageFiles(manifest) {
   );
   await chmod(path.join(packageRoot, "bootstrap.sh"), 0o755);
   await cp(
+    path.join(packageSourceDir, "bootstrap.cmd"),
+    path.join(packageRoot, "bootstrap.cmd")
+  );
+  await cp(
     path.join(packageSourceDir, "tutti-guide.md"),
     path.join(packageRoot, "tutti-guide.md")
   );
@@ -311,9 +367,28 @@ async function copyCliManifest(manifest) {
 async function buildStandaloneServers() {
   const sourcePath = path.join(packageSourceDir, "server.go");
   await access(sourcePath);
-  for (const target of ["darwin-arm64", "darwin-amd64"]) {
-    const [goos, goarch] = target.split("-");
-    const targetDir = path.join(packageRoot, "bin", target);
+  const targets = [
+    {
+      goarch: "arm64",
+      goos: "darwin",
+      outputName: "tutti-onboarding-server",
+      platform: "darwin-arm64"
+    },
+    {
+      goarch: "amd64",
+      goos: "darwin",
+      outputName: "tutti-onboarding-server",
+      platform: "darwin-amd64"
+    },
+    {
+      goarch: "amd64",
+      goos: "windows",
+      outputName: "tutti-onboarding-server.exe",
+      platform: "windows-amd64"
+    }
+  ];
+  for (const target of targets) {
+    const targetDir = path.join(packageRoot, "bin", target.platform);
     await mkdir(targetDir, { recursive: true });
     await run(
       "go",
@@ -323,7 +398,7 @@ async function buildStandaloneServers() {
         "-ldflags",
         "-s -w",
         "-o",
-        path.join(targetDir, "tutti-onboarding-server"),
+        path.join(targetDir, target.outputName),
         sourcePath
       ],
       {
@@ -331,8 +406,8 @@ async function buildStandaloneServers() {
         env: {
           ...process.env,
           CGO_ENABLED: "0",
-          GOARCH: goarch,
-          GOOS: goos
+          GOARCH: target.goarch,
+          GOOS: target.goos
         }
       }
     );
@@ -372,9 +447,11 @@ async function validatePackageRoot(root) {
   if (agents.trim().length === 0) {
     throw new Error("AGENTS.md must be non-empty.");
   }
-  const bootstrapStat = await stat(path.join(root, "bootstrap.sh"));
-  if ((bootstrapStat.mode & 0o111) === 0) {
-    throw new Error("bootstrap.sh must be executable.");
+  if (process.platform !== "win32") {
+    const bootstrapStat = await stat(path.join(root, "bootstrap.sh"));
+    if ((bootstrapStat.mode & 0o111) === 0) {
+      throw new Error("bootstrap.sh must be executable.");
+    }
   }
   await assertNoSymlinks(root);
 }
@@ -556,7 +633,7 @@ async function run(command, args, options = {}) {
     const child = spawn(command, args, {
       cwd: options.cwd ?? appDir,
       env: options.env ?? process.env,
-      shell: false,
+      shell: commandNeedsShell(command),
       stdio: "inherit"
     });
     child.on("error", reject);
@@ -570,4 +647,16 @@ async function run(command, args, options = {}) {
       );
     });
   });
+}
+
+function commandNeedsShell(command) {
+  if (process.platform !== "win32") {
+    return false;
+  }
+  const normalized = command.toLowerCase();
+  return (
+    normalized === "pnpm" ||
+    normalized.endsWith(".cmd") ||
+    normalized.endsWith(".bat")
+  );
 }

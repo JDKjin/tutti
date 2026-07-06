@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -52,7 +53,7 @@ const (
 	remoteCatalogURLEnv          = "TUTTI_APP_CATALOG_URL"
 	ProductionRemoteCatalogURL   = "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-app-releases/catalog.json"
 	StagingRemoteCatalogURL      = "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-app-releases-staging/catalog.json"
-	defaultRemoteCatalogURL      = ProductionRemoteCatalogURL
+	WindowsRemoteCatalogURL      = "https://github.com/JDKjin/tutti/releases/latest/download/tutti-app-catalog.json"
 	remoteCatalogFetchTimeout    = 10 * time.Second
 	remoteCatalogFetchAttempts   = 3
 )
@@ -641,7 +642,14 @@ func remoteCatalogURL() string {
 	if value, ok := os.LookupEnv(remoteCatalogURLEnv); ok {
 		return strings.TrimSpace(value)
 	}
-	return defaultRemoteCatalogURL
+	return defaultRemoteCatalogURL()
+}
+
+func defaultRemoteCatalogURL() string {
+	if runtime.GOOS == "windows" {
+		return WindowsRemoteCatalogURL
+	}
+	return ProductionRemoteCatalogURL
 }
 
 func parseRemoteCatalog(data []byte) ([]App, error) {
