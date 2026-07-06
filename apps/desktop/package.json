@@ -18,6 +18,10 @@
     "afterAllArtifactBuild": "scripts/notarize-mac-dmg-artifacts.mjs",
     "extraResources": [
       {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      },
+      {
         "from": "build/tuttid",
         "to": "bin"
       },
@@ -84,7 +88,7 @@
     "build:mac:signed": "bash ../../tools/scripts/build-desktop-package.sh mac-signed",
     "build:mac:unsigned": "bash ../../tools/scripts/build-desktop-package.sh mac-unsigned",
     "build:unpack": "bash ../../tools/scripts/build-desktop-package.sh unpack",
-    "build:win": "bash ../../tools/scripts/build-desktop-package.sh win",
+    "build:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../tools/scripts/build-desktop-package.ps1 win",
     "dev": "electron-vite dev",
     "dev:web": "vite --config vite.web.config.mjs",
     "notify:release:feishu": "node scripts/send-release-feishu-card.mjs",

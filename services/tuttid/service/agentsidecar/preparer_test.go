@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,7 +16,7 @@ import (
 
 func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setSidecarTestHome(t, home)
 	userCodexHome := filepath.Join(home, ".codex")
 	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
 		t.Fatal(err)
@@ -122,14 +123,14 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		filepath.Join("plugins", "data"),
 		filepath.Join("plugins", ".plugin-appserver"),
 	} {
-		info, err := os.Lstat(filepath.Join(codexHome, rel))
+		_, err := os.Lstat(filepath.Join(codexHome, rel))
 		if err != nil {
 			t.Fatalf("codex plugin state %s not exposed: %v", rel, err)
 		}
-		if info.Mode()&os.ModeSymlink == 0 {
-			t.Fatalf("codex plugin state %s should be exposed as symlink", rel)
-		}
 	}
+	assertSidecarFileContent(t, filepath.Join(codexHome, "plugins", "cache", "sample", "plugin.txt"), "plugin cache")
+	assertSidecarFileContent(t, filepath.Join(codexHome, "plugins", "data", "sample", "state.txt"), "plugin state")
+	assertSidecarFileContent(t, filepath.Join(codexHome, "plugins", ".plugin-appserver", "codex"), "plugin server")
 	if _, err := os.Stat(filepath.Join(cwd, ".tutti-codex-root")); !os.IsNotExist(err) {
 		t.Fatalf("codex preparer should not create project root marker in cwd, err = %v", err)
 	}
@@ -166,15 +167,14 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if err != nil {
 		t.Fatalf("caveman skill not exposed: %v", err)
 	}
-	if cavemanInfo.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("caveman skill mode = %v, want symlink", cavemanInfo.Mode())
-	}
-	cavemanTarget, err := os.Readlink(cavemanPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cavemanTarget != filepath.Join(userCodexHome, "skills", "caveman") {
-		t.Fatalf("caveman symlink target = %q", cavemanTarget)
+	if cavemanInfo.Mode()&os.ModeSymlink != 0 {
+		cavemanTarget, err := os.Readlink(cavemanPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cavemanTarget != filepath.Join(userCodexHome, "skills", "caveman") {
+			t.Fatalf("caveman symlink target = %q", cavemanTarget)
+		}
 	}
 	cavemanSkill, err := os.ReadFile(filepath.Join(cavemanPath, "SKILL.md"))
 	if err != nil {
@@ -183,13 +183,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if !strings.Contains(string(cavemanSkill), "Caveman mode") {
 		t.Fatalf("caveman skill = %q", string(cavemanSkill))
 	}
-	grillMeInfo, err := os.Lstat(filepath.Join(codexHome, "skills", "grill-me"))
-	if err != nil {
-		t.Fatalf("grill-me skill not exposed: %v", err)
-	}
-	if grillMeInfo.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("grill-me skill mode = %v, want symlink", grillMeInfo.Mode())
-	}
+	assertSidecarDirectoryReachable(t, filepath.Join(codexHome, "skills", "grill-me"), "grill-me skill")
 	if _, err := os.Lstat(filepath.Join(codexHome, "skills", ".system")); !os.IsNotExist(err) {
 		t.Fatalf("hidden system skill exposed, err = %v", err)
 	}
@@ -322,9 +316,116 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 }
 
+func TestDefaultPreparerCodexUsesDirectoryJunctionWhenSymlinkUnavailable(t *testing.T) {
+	previousCreateSymlink := createSymlink
+	previousCreateDirectoryJunction := createDirectoryJunction
+	junctionTargets := map[string]string{}
+	createSymlink = func(string, string) error {
+		return errors.New("symlink unavailable")
+	}
+	createDirectoryJunction = func(source string, target string) error {
+		junctionTargets[target] = source
+		return copyDirectory(source, target)
+	}
+	t.Cleanup(func() {
+		createSymlink = previousCreateSymlink
+		createDirectoryJunction = previousCreateDirectoryJunction
+	})
+
+	home := t.TempDir()
+	setSidecarTestHome(t, home)
+	userCodexHome := filepath.Join(home, ".codex")
+	writeSidecarTestFile(t, filepath.Join(userCodexHome, "auth.json"), `{"token":"test"}`)
+	writeSidecarTestFile(t, filepath.Join(userCodexHome, "plugins", "cache", "sample", "plugin.txt"), "plugin cache")
+	writeSidecarTestFile(t, filepath.Join(userCodexHome, "skills", "caveman", "SKILL.md"), "---\nname: caveman\n---\nCaveman mode\n")
+
+	prepared, err := NewDefaultPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	if codexHome == "" {
+		t.Fatalf("prepared env = %#v, want CODEX_HOME", prepared.Env)
+	}
+	assertSidecarFileContent(t, filepath.Join(codexHome, "auth.json"), `{"token":"test"}`)
+	assertSidecarFileContent(t, filepath.Join(codexHome, "plugins", "cache", "sample", "plugin.txt"), "plugin cache")
+	assertSidecarFileContent(t, filepath.Join(codexHome, "skills", "caveman", "SKILL.md"), "---\nname: caveman\n---\nCaveman mode\n")
+	for path, wantSource := range map[string]string{
+		filepath.Join(codexHome, "plugins", "cache"):  filepath.Join(userCodexHome, "plugins", "cache"),
+		filepath.Join(codexHome, "skills", "caveman"): filepath.Join(userCodexHome, "skills", "caveman"),
+	} {
+		info, err := os.Lstat(path)
+		if err != nil {
+			t.Fatalf("linked path missing %s: %v", path, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			t.Fatalf("path %s should use directory junction fallback when symlink is unavailable", path)
+		}
+		if junctionTargets[path] != wantSource {
+			t.Fatalf("junction target %s = %q, want %q", path, junctionTargets[path], wantSource)
+		}
+	}
+}
+
+func TestDefaultPreparerCodexCopiesUserStateWhenSymlinkAndJunctionUnavailable(t *testing.T) {
+	previousCreateSymlink := createSymlink
+	previousCreateDirectoryJunction := createDirectoryJunction
+	createSymlink = func(string, string) error {
+		return errors.New("symlink unavailable")
+	}
+	createDirectoryJunction = func(string, string) error {
+		return errors.New("junction unavailable")
+	}
+	t.Cleanup(func() {
+		createSymlink = previousCreateSymlink
+		createDirectoryJunction = previousCreateDirectoryJunction
+	})
+
+	home := t.TempDir()
+	setSidecarTestHome(t, home)
+	userCodexHome := filepath.Join(home, ".codex")
+	writeSidecarTestFile(t, filepath.Join(userCodexHome, "auth.json"), `{"token":"test"}`)
+	writeSidecarTestFile(t, filepath.Join(userCodexHome, "plugins", "cache", "sample", "plugin.txt"), "plugin cache")
+	writeSidecarTestFile(t, filepath.Join(userCodexHome, "skills", "caveman", "SKILL.md"), "---\nname: caveman\n---\nCaveman mode\n")
+
+	prepared, err := NewDefaultPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	if codexHome == "" {
+		t.Fatalf("prepared env = %#v, want CODEX_HOME", prepared.Env)
+	}
+	assertSidecarFileContent(t, filepath.Join(codexHome, "auth.json"), `{"token":"test"}`)
+	assertSidecarFileContent(t, filepath.Join(codexHome, "plugins", "cache", "sample", "plugin.txt"), "plugin cache")
+	assertSidecarFileContent(t, filepath.Join(codexHome, "skills", "caveman", "SKILL.md"), "---\nname: caveman\n---\nCaveman mode\n")
+	for _, path := range []string{
+		filepath.Join(codexHome, "plugins", "cache"),
+		filepath.Join(codexHome, "skills", "caveman"),
+	} {
+		info, err := os.Lstat(path)
+		if err != nil {
+			t.Fatalf("copied path missing %s: %v", path, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			t.Fatalf("path %s should be copied when symlink and junction are unavailable", path)
+		}
+	}
+}
+
 func TestDefaultPreparerCodexUserSkillNameWinsBeforeTuttiInjection(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setSidecarTestHome(t, home)
 	userCodexHome := filepath.Join(home, ".codex")
 	writeSidecarTestFile(t, filepath.Join(userCodexHome, "skills", "tutti-cli", "SKILL.md"), "---\nname: tutti-cli\n---\nUser tutti skill\n")
 
@@ -341,13 +442,7 @@ func TestDefaultPreparerCodexUserSkillNameWinsBeforeTuttiInjection(t *testing.T)
 
 	codexHome := envValue(prepared.Env, "CODEX_HOME")
 	userSkillPath := filepath.Join(codexHome, "skills", "tutti-cli")
-	userSkillInfo, err := os.Lstat(userSkillPath)
-	if err != nil {
-		t.Fatalf("user tutti-cli skill not exposed: %v", err)
-	}
-	if userSkillInfo.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("user tutti-cli skill mode = %v, want symlink", userSkillInfo.Mode())
-	}
+	assertSidecarDirectoryReachable(t, userSkillPath, "user tutti-cli skill")
 	userSkill, err := os.ReadFile(filepath.Join(userSkillPath, "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
@@ -374,7 +469,7 @@ func TestDefaultPreparerCodexUserSkillNameWinsBeforeTuttiInjection(t *testing.T)
 
 func TestDefaultPreparerCodexWritesProjectRootMarkersDisabledConfigWithoutUserConfig(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setSidecarTestHome(t, home)
 
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
@@ -407,7 +502,7 @@ func TestDefaultPreparerCodexWritesProjectRootMarkersDisabledConfigWithoutUserCo
 
 func TestDefaultPreparerCodexWritesGeneralConversationDetailModeToSessionConfig(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setSidecarTestHome(t, home)
 
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
@@ -962,7 +1057,11 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 
 func TestDefaultPreparerClaudeCodeSetsClaudeCodeExecutableFromPath(t *testing.T) {
 	binDir := t.TempDir()
-	claudePath := filepath.Join(binDir, "claude")
+	claudeName := "claude"
+	if runtime.GOOS == "windows" {
+		claudeName = "claude.exe"
+	}
+	claudePath := filepath.Join(binDir, claudeName)
 	if err := os.WriteFile(claudePath, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -990,7 +1089,7 @@ func TestDefaultPreparerClaudeCodeSetsClaudeCodeExecutableFromPath(t *testing.T)
 // `set_mode("plan")` call instead.
 func TestDefaultPreparerClaudePlanModeDoesNotOverrideConfigDir(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setSidecarTestHome(t, home)
 	userClaudeDir := filepath.Join(home, ".claude")
 	if err := os.MkdirAll(userClaudeDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -1071,7 +1170,7 @@ func TestDefaultPreparerCleanupRemovesClaudeSystemPromptRuntimeRoot(t *testing.T
 
 func TestDefaultPreparerGeminiUsesSessionScopedHome(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setSidecarTestHome(t, home)
 	userGeminiDir := filepath.Join(home, ".gemini")
 	if err := os.MkdirAll(userGeminiDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -1161,7 +1260,7 @@ func TestDefaultPreparerGeminiUsesSessionScopedHome(t *testing.T) {
 
 func TestCodexPreparerSkipsUserBrowserSkillWhenBrowserUseEnabled(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setSidecarTestHome(t, home)
 	t.Setenv(browserUseSwitchEnv, "")
 	userCodexHome := filepath.Join(home, ".codex")
 	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
@@ -1209,7 +1308,7 @@ func TestCodexPreparerSkipsUserBrowserSkillWhenBrowserUseEnabled(t *testing.T) {
 
 func TestExposeCodexImportedRolloutFileSymlinksMatchingRelativePath(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setSidecarTestHome(t, home)
 	rel := filepath.Join("sessions", "2026", "07", "04", "rollout-abc.jsonl")
 	sourcePath := filepath.Join(home, ".codex", rel)
 	writeSidecarTestFile(t, sourcePath, `{"type":"session_meta"}`)
@@ -1224,21 +1323,22 @@ func TestExposeCodexImportedRolloutFileSymlinksMatchingRelativePath(t *testing.T
 	if err != nil {
 		t.Fatalf("imported rollout file not exposed: %v", err)
 	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("imported rollout file mode = %v, want symlink", info.Mode())
-	}
-	linkTarget, err := os.Readlink(target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if linkTarget != sourcePath {
-		t.Fatalf("symlink target = %q, want %q", linkTarget, sourcePath)
+	if info.Mode()&os.ModeSymlink != 0 {
+		linkTarget, err := os.Readlink(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if linkTarget != sourcePath {
+			t.Fatalf("symlink target = %q, want %q", linkTarget, sourcePath)
+		}
+	} else {
+		assertSidecarFileContent(t, target, `{"type":"session_meta"}`)
 	}
 }
 
 func TestExposeCodexImportedRolloutFileNoopWhenSourcePathEmpty(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setSidecarTestHome(t, home)
 	codexHome := t.TempDir()
 	if err := exposeCodexImportedRolloutFile(codexHome, ""); err != nil {
 		t.Fatalf("exposeCodexImportedRolloutFile() error = %v", err)
@@ -1254,7 +1354,7 @@ func TestExposeCodexImportedRolloutFileNoopWhenSourcePathEmpty(t *testing.T) {
 
 func TestExposeCodexImportedRolloutFileGracefulWhenSourceFileMissing(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setSidecarTestHome(t, home)
 	sourcePath := filepath.Join(home, ".codex", "sessions", "2026", "07", "04", "rollout-gone.jsonl")
 
 	codexHome := t.TempDir()
@@ -1268,7 +1368,7 @@ func TestExposeCodexImportedRolloutFileGracefulWhenSourceFileMissing(t *testing.
 
 func TestExposeCodexImportedRolloutFileGracefulWhenSourceOutsideRealCodexHome(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setSidecarTestHome(t, home)
 	outsidePath := filepath.Join(t.TempDir(), "rollout.jsonl")
 	writeSidecarTestFile(t, outsidePath, `{"type":"session_meta"}`)
 
@@ -1287,7 +1387,7 @@ func TestExposeCodexImportedRolloutFileGracefulWhenSourceOutsideRealCodexHome(t 
 
 func TestDefaultPreparerCodexExposesImportedRolloutFileFromPrepareInput(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setSidecarTestHome(t, home)
 	rel := filepath.Join("sessions", "2026", "07", "04", "rollout-abc.jsonl")
 	sourcePath := filepath.Join(home, ".codex", rel)
 	writeSidecarTestFile(t, sourcePath, `{"type":"session_meta"}`)
@@ -1315,13 +1415,13 @@ func TestDefaultPreparerCodexExposesImportedRolloutFileFromPrepareInput(t *testi
 		t.Fatalf("imported rollout file not exposed via Prepare(): %v", err)
 	}
 	if info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("imported rollout file mode = %v, want symlink", info.Mode())
+		assertSidecarFileContent(t, target, `{"type":"session_meta"}`)
 	}
 }
 
 func TestDefaultPreparerCodexSkipsRolloutExposureForNonImportedSession(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setSidecarTestHome(t, home)
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
 	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
@@ -1361,4 +1461,42 @@ func writeSidecarTestFile(t *testing.T, path string, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func setSidecarTestHome(t *testing.T, home string) {
+	t.Helper()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	volume := filepath.VolumeName(home)
+	if volume != "" {
+		t.Setenv("HOMEDRIVE", volume)
+		t.Setenv("HOMEPATH", strings.TrimPrefix(home, volume))
+	}
+}
+
+func assertSidecarFileContent(t *testing.T, path string, want string) {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read sidecar file %s: %v", path, err)
+	}
+	if string(content) != want {
+		t.Fatalf("sidecar file %s = %q, want %q", path, string(content), want)
+	}
+}
+
+func assertSidecarDirectoryReachable(t *testing.T, path string, label string) {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("%s not exposed: %v", label, err)
+	}
+	if info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return
+	}
+	statInfo, err := os.Stat(path)
+	if err == nil && statInfo.IsDir() {
+		return
+	}
+	t.Fatalf("%s mode = %v, want reachable directory-like path", label, info.Mode())
 }

@@ -61,15 +61,26 @@ export const en = {
   desktop: {
     installGuard: {
       detail:
-        "Tutti is running from the downloaded disk image. Move it to Applications before continuing so updates can install correctly.",
+        "Tutti is running from a downloaded location. Move it to a normal Windows app folder before continuing so updates can install correctly.",
       failureDetail:
-        "macOS could not move Tutti automatically. Drag {{appPath}} to Applications, then open Tutti from Applications.",
+        "Windows could not move Tutti automatically. Move {{appPath}} to your preferred app folder, then open Tutti again.",
       failureMessage: "Move Tutti manually",
-      message: "Move Tutti to Applications?",
-      moveAction: "Move to Applications and Relaunch",
+      message: "Move Tutti to your Windows app folder?",
+      moveAction: "Move to Windows app folder and Relaunch",
       quitAction: "Quit",
-      showInFinderAction: "Show in Finder",
+      showInFinderAction: "Show in File Explorer",
       title: "Install Tutti"
+    },
+    closeChoice: {
+      detail:
+        "Minimize to tray keeps Tutti running in the background. Quit stops local services and closes the app.",
+      message: "Choose what Tutti should do when this window closes.",
+      minimizeToTrayAction: "Minimize to Tray",
+      quitAction: "Quit Tutti",
+      title: "Close Tutti?",
+      trayOpenAction: "Open Tutti",
+      trayQuitAction: "Quit Tutti",
+      trayTooltip: "Tutti is running"
     },
     logsExport: {
       actionHint: "You can copy the agent prompt or open the exported folder.",
@@ -115,7 +126,7 @@ export const en = {
       window: "Window"
     },
     quitShortcut: {
-      confirmToastTitle: "Press Command + Q again to quit Tutti"
+      confirmToastTitle: "Press Alt + F4 again to quit Tutti"
     }
   },
   workspace: {
@@ -417,8 +428,8 @@ export const en = {
         workbenchWindowSnappingShortcutLabel: "Window snapping shortcut",
         workbenchWindowSnappingShortcutOptions: {
           off: "Off",
-          commandArrows: "Command + Arrow keys",
-          commandShiftArrows: "Command + Shift + Arrow keys"
+          commandArrows: "Ctrl + Arrow keys",
+          commandShiftArrows: "Ctrl + Shift + Arrow keys"
         },
         themeDescription:
           "Controls window appearance and the color mode for information",
@@ -465,7 +476,7 @@ export const en = {
           "We couldn't update the work mode right now.",
         computerUseLabel: "Computer use",
         computerUseDescription:
-          "Allows the agent to control your Mac desktop — take screenshots, click, type, and more.",
+          "Allows the agent to control your Windows desktop - take screenshots, click, type, and more.",
         computerUseInstallButton: "Install",
         computerUseInstalling: "Installing…",
         computerUseInstallSuccess: "cua-driver installed successfully.",
@@ -502,13 +513,13 @@ export const en = {
         computerUseStartingCuaDriverInstruction:
           "Starting CuaDriver and checking authorization…",
         computerUseGrantTimedOutInstruction:
-          "macOS did not show a permission confirmation. Open System Settings > Privacy & Security, enable CuaDriver permissions, then return to Tutti and check again.",
+          "Windows did not show a permission confirmation. Open Windows Settings > Privacy & security, enable CuaDriver permissions, then return to Tutti and check again.",
         computerUseGrantAccessibilityTimedOutInstruction:
-          "macOS did not show the Accessibility confirmation. Open System Settings > Privacy & Security > Accessibility, enable CuaDriver, then return to Tutti and check again.",
+          "Windows did not show the Accessibility confirmation. Open Windows Settings > Privacy & security > Accessibility, enable CuaDriver, then return to Tutti and check again.",
         computerUseGrantScreenRecordingTimedOutInstruction:
-          "macOS did not show the Screen Recording confirmation. Open System Settings > Privacy & Security > Screen & System Audio Recording, enable CuaDriver, then return to Tutti and check again.",
+          "Windows did not show the Screen Recording confirmation. Open Windows Settings > Privacy & security > Screen recording, enable CuaDriver, then return to Tutti and check again.",
         computerUseGrantManualFallbackInstruction:
-          "If no macOS permission prompt appeared, open {{settings}} and enable CuaDriver manually. Tutti will keep checking in the background.",
+          "If no Windows permission prompt appeared, open {{settings}} and enable CuaDriver manually. Tutti will keep checking in the background.",
         computerUseOpenAccessibilitySettingsButton:
           "Open Accessibility Settings",
         computerUseOpenScreenRecordingSettingsButton:
@@ -516,7 +527,7 @@ export const en = {
         computerUseOpenPrivacySettingsButton: "Open Privacy Settings",
         computerUseOpeningSettings: "Opening Settings…",
         computerUseOpenSettingsTooltip:
-          "Open the matching macOS privacy settings page. Tutti will keep checking authorization while this panel is open.",
+          "Open the matching Windows privacy settings page. Tutti will keep checking authorization while this panel is open.",
         computerUseOpenSettingsFailed: "Could not open System Settings.",
         computerUseAccessibilitySettingsOpenedInstruction:
           "Accessibility Settings is open. Enable CuaDriver there; Tutti will check automatically.",
@@ -535,11 +546,11 @@ export const en = {
         computerUsePermissionListSeparator: ", ",
         computerUsePermissionDialogTitle: "Set up Computer Use",
         computerUsePermissionDialogDescription:
-          "Tutti guides the flow, while macOS grants the permissions to CuaDriver.",
+          "Tutti guides the flow, while Windows grants the permissions to CuaDriver.",
         computerUsePermissionDialogRelationshipTitle:
           "Why authorize CuaDriver?",
         computerUsePermissionDialogRelationshipBody:
-          "Tutti uses CuaDriver to take screenshots, click, and type. macOS may ask you to authorize CuaDriver next; this is expected.",
+          "Tutti uses CuaDriver to take screenshots, click, and type. Windows may ask you to authorize CuaDriver next; this is expected.",
         computerUsePermissionDialogIconHint:
           "After opening System Settings, find “CuaDriver” in the permission list and turn on its permission switch.",
         computerUsePermissionDialogRequiredTitle: "Required permissions",
@@ -577,7 +588,7 @@ export const en = {
         computerUseWizardGrantInstruction:
           "After opening System Settings, find “CuaDriver” in the “{{permission}}” list and turn on its switch. Then click “Next”.",
         computerUseWizardScreenRecordingKillNote:
-          "macOS may offer to reopen CuaDriver when you flip the switch — you can ignore it; the next step handles that automatically.",
+          "Windows may offer to reopen CuaDriver when you flip the switch - you can ignore it; the next step handles that automatically.",
         computerUseWizardVerifyBody:
           "Once you have granted both permissions, click “Check again” to confirm everything is ready (about 2 seconds). If an item still says “Needed”, click “Grant” next to it to finish that one.",
         computerUseWizardVerifyChecking: "Checking…",
@@ -902,10 +913,10 @@ export const en = {
       },
       missionControl: {
         activateShortcutDefault: "Ctrl + 1",
-        activateShortcutMac: "Cmd + 1",
+        activateShortcutMac: "Ctrl + 1",
         activateTrigger: "Quick activate node",
         layoutShortcutDefault: "Ctrl + 2",
-        layoutShortcutMac: "Cmd + 2",
+        layoutShortcutMac: "Ctrl + 2",
         layoutTrigger: "Quick layout",
         unavailableTrigger: "Available when multiple windows exist"
       }

@@ -24,7 +24,7 @@ const CUA_DRIVER_APP_BINARY_PATH =
   "/Applications/CuaDriver.app/Contents/MacOS/cua-driver";
 const COMPUTER_USE_GRANT_TIMEOUT_MS = 75_000;
 const COMPUTER_USE_GRANT_TIMEOUT_OUTPUT =
-  "Timed out waiting for macOS permission confirmation. Open System Settings > Privacy & Security and enable CuaDriver permissions, then check again.";
+  "Timed out waiting for Windows permission confirmation. Open Windows Settings > Privacy & security and enable CuaDriver permissions, then check again.";
 const COMPUTER_USE_DRIVER_STOP_TIMEOUT_MS = 10_000;
 // Relaunching the daemon never prompts — TCC prompts belong exclusively to
 // the grant flow — so the restart only needs to wait for the app to come up.

@@ -61,15 +61,26 @@ export const zhCN = {
   desktop: {
     installGuard: {
       detail:
-        "Tutti 正在从下载的磁盘镜像中运行。请先移动到 Applications，再继续使用，这样后续更新才能正常安装。",
+        "Tutti 正在从下载位置运行。请先移动到常用的 Windows 应用目录，再继续使用，这样后续更新才能正常安装。",
       failureDetail:
-        "macOS 无法自动移动 Tutti。请将 {{appPath}} 拖到 Applications，然后从 Applications 打开 Tutti。",
+        "Windows 无法自动移动 Tutti。请将 {{appPath}} 移动到你常用的应用目录，然后重新打开 Tutti。",
       failureMessage: "请手动移动 Tutti",
-      message: "要将 Tutti 移动到 Applications 吗？",
-      moveAction: "移动到 Applications 并重新打开",
+      message: "要将 Tutti 移动到 Windows 应用目录吗？",
+      moveAction: "移动到 Windows 应用目录并重新打开",
       quitAction: "退出",
-      showInFinderAction: "在 Finder 中显示",
+      showInFinderAction: "在文件资源管理器中显示",
       title: "安装 Tutti"
+    },
+    closeChoice: {
+      detail:
+        "最小化到托盘会让 Tutti 在后台继续运行；完全退出会停止本地服务并关闭应用。",
+      message: "请选择关闭窗口后的操作。",
+      minimizeToTrayAction: "最小化到托盘",
+      quitAction: "完全退出应用",
+      title: "关闭 Tutti？",
+      trayOpenAction: "打开 Tutti",
+      trayQuitAction: "退出 Tutti",
+      trayTooltip: "Tutti 正在运行"
     },
     logsExport: {
       actionHint: "你可以复制 Agent 调试指令，或打开导出文件所在目录。",
@@ -114,7 +125,7 @@ export const zhCN = {
       window: "窗口"
     },
     quitShortcut: {
-      confirmToastTitle: "再次敲击 Command + Q 即可退出Tutti"
+      confirmToastTitle: "再次按 Alt + F4 即可退出 Tutti"
     }
   },
   workspace: {
@@ -402,8 +413,8 @@ export const zhCN = {
         workbenchWindowSnappingShortcutLabel: "窗口吸附快捷键",
         workbenchWindowSnappingShortcutOptions: {
           off: "关闭",
-          commandArrows: "Command + 方向键",
-          commandShiftArrows: "Command + Shift + 方向键"
+          commandArrows: "Ctrl + 方向键",
+          commandShiftArrows: "Ctrl + Shift + 方向键"
         },
         themeDescription: "控制窗口外观以及信息的颜色模式",
         themeLabel: "外观",
@@ -444,7 +455,7 @@ export const zhCN = {
         agentConversationDetailModeSaveFailed: "暂时无法更新工作模式。",
         computerUseLabel: "电脑控制",
         computerUseDescription:
-          "让 Agent 控制你的 Mac 桌面——截图、点击、键盘输入等",
+          "让 Agent 控制你的 Windows 桌面——截图、点击、键盘输入等",
         computerUseInstallButton: "安装",
         computerUseInstalling: "正在安装…",
         computerUseInstallSuccess: "cua-driver 安装成功。",
@@ -479,19 +490,19 @@ export const zhCN = {
         computerUseStartingCuaDriverInstruction:
           "正在启动 CuaDriver 并检查授权状态…",
         computerUseGrantTimedOutInstruction:
-          "macOS 没有弹出授权确认。请打开系统设置 > 隐私与安全性，为 CuaDriver 打开所需权限，然后回到 Tutti 重新检查。",
+          "Windows 没有弹出授权确认。请打开 Windows 设置 > 隐私和安全性，为 CuaDriver 打开所需权限，然后回到 Tutti 重新检查。",
         computerUseGrantAccessibilityTimedOutInstruction:
-          "macOS 没有弹出辅助使用授权确认。请打开系统设置 > 隐私与安全性 > 辅助使用，启用 CuaDriver，然后回到 Tutti 重新检查。",
+          "Windows 没有弹出辅助使用授权确认。请打开 Windows 设置 > 隐私和安全性 > 辅助使用，启用 CuaDriver，然后回到 Tutti 重新检查。",
         computerUseGrantScreenRecordingTimedOutInstruction:
-          "macOS 没有弹出屏幕录制授权确认。请打开系统设置 > 隐私与安全性 > 屏幕与系统音频录制，启用 CuaDriver，然后回到 Tutti 重新检查。",
+          "Windows 没有弹出屏幕录制授权确认。请打开 Windows 设置 > 隐私和安全性 > 屏幕录制，启用 CuaDriver，然后回到 Tutti 重新检查。",
         computerUseGrantManualFallbackInstruction:
-          "如果 macOS 没有弹出授权确认，请打开{{settings}}并手动启用 CuaDriver。Tutti 会在后台继续检查。",
+          "如果 Windows 没有弹出授权确认，请打开{{settings}}并手动启用 CuaDriver。Tutti 会在后台继续检查。",
         computerUseOpenAccessibilitySettingsButton: "打开辅助使用设置",
         computerUseOpenScreenRecordingSettingsButton: "打开屏幕录制设置",
         computerUseOpenPrivacySettingsButton: "打开隐私设置",
         computerUseOpeningSettings: "正在打开设置…",
         computerUseOpenSettingsTooltip:
-          "打开对应的 macOS 隐私设置页面。保持此面板打开时，Tutti 会自动检查授权状态。",
+          "打开对应的 Windows 隐私设置页面。保持此面板打开时，Tutti 会自动检查授权状态。",
         computerUseOpenSettingsFailed: "无法打开系统设置。",
         computerUseAccessibilitySettingsOpenedInstruction:
           "辅助使用设置已打开。请在那里启用 CuaDriver，Tutti 会自动检查。",
@@ -509,11 +520,11 @@ export const zhCN = {
         computerUsePermissionListSeparator: "、",
         computerUsePermissionDialogTitle: "设置电脑控制",
         computerUsePermissionDialogDescription:
-          "Tutti 会引导授权流程，macOS 会把权限授予 CuaDriver。",
+          "Tutti 会引导授权流程，Windows 会把权限授予 CuaDriver。",
         computerUsePermissionDialogRelationshipTitle:
           "为什么授权给 CuaDriver？",
         computerUsePermissionDialogRelationshipBody:
-          "Tutti 通过 CuaDriver 来完成截图、点击和键盘输入。接下来 macOS 可能会提示你授权 CuaDriver，这是正常的。",
+          "Tutti 通过 CuaDriver 来完成截图、点击和键盘输入。接下来 Windows 可能会提示你授权 CuaDriver，这是正常的。",
         computerUsePermissionDialogIconHint:
           "打开系统设置后，在权限列表里找到「CuaDriver」，并打开权限开关。",
         computerUsePermissionDialogRequiredTitle: "需要的权限",
@@ -550,7 +561,7 @@ export const zhCN = {
         computerUseWizardGrantInstruction:
           "打开系统设置后，在「{{permission}}」列表里找到「CuaDriver」，并打开权限开关。完成后点「下一步」。",
         computerUseWizardScreenRecordingKillNote:
-          "打开开关时 macOS 可能提示重新打开 CuaDriver，可以忽略，下一步会自动处理。",
+          "打开开关时 Windows 可能提示重新打开 CuaDriver，可以忽略，下一步会自动处理。",
         computerUseWizardVerifyBody:
           "完成前面两步授权后，点击「重新检查」确认一切就绪（约 2 秒）。如果某项显示「需要授权」，点它旁边的「去授权」补上即可。",
         computerUseWizardVerifyChecking: "正在重新检查…",
@@ -859,10 +870,10 @@ export const zhCN = {
       },
       missionControl: {
         activateShortcutDefault: "Ctrl + 1",
-        activateShortcutMac: "Cmd + 1",
+        activateShortcutMac: "Ctrl + 1",
         activateTrigger: "快速激活节点",
         layoutShortcutDefault: "Ctrl + 2",
-        layoutShortcutMac: "Cmd + 2",
+        layoutShortcutMac: "Ctrl + 2",
         layoutTrigger: "快速布局",
         unavailableTrigger: "仅存在多个窗口时可使用"
       }

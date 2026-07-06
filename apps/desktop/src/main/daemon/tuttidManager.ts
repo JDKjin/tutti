@@ -636,12 +636,20 @@ export function isLikelyTuttidProcess(command: string): boolean {
     return false;
   }
 
-  return normalized
-    .split(/\s+/)
-    .some((part) => part.split("/").pop() === "tuttid");
+  return normalized.split(/\s+/).some((part) => {
+    const executableName = part
+      .replace(/^"+|"+$/g, "")
+      .split(/[\\/]/u)
+      .pop();
+    return executableName === "tuttid" || executableName === "tuttid.exe";
+  });
 }
 
 function readProcessCommand(pid: number): string {
+  if (process.platform === "win32") {
+    return readWindowsProcessCommand(pid);
+  }
+
   const result = spawnSync(
     "ps",
     ["-p", String(pid), "-o", "comm=", "-o", "args="],
@@ -656,6 +664,35 @@ function readProcessCommand(pid: number): string {
   return result.stdout.trim();
 }
 
+function readWindowsProcessCommand(pid: number): string {
+  const result = spawnSync(
+    "tasklist",
+    ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"],
+    {
+      encoding: "utf8",
+      windowsHide: true
+    }
+  );
+  if (result.status !== 0) {
+    return "";
+  }
+
+  const line = result.stdout
+    .split(/\r?\n/u)
+    .map((item) => item.trim())
+    .find((item) => item.length > 0 && item.startsWith('"'));
+  if (!line) {
+    return "";
+  }
+
+  return parseWindowsTasklistImageName(line) ?? "";
+}
+
+export function parseWindowsTasklistImageName(line: string): string | null {
+  const match = /^"((?:[^"]|"")*)"/u.exec(line.trim());
+  return match?.[1]?.replaceAll('""', '"') ?? null;
+}
+
 function terminateProcessTree(
   child: ChildProcess,
   signal: NodeJS.Signals
@@ -664,13 +701,16 @@ function terminateProcessTree(
     return;
   }
 
-  if (process.platform !== "win32") {
-    try {
-      process.kill(-child.pid, signal);
-      return;
-    } catch {
-      // Fall back to the direct child when the process group is already gone.
-    }
+  if (process.platform === "win32") {
+    signalProcessTree(child.pid, signal);
+    return;
+  }
+
+  try {
+    process.kill(-child.pid, signal);
+    return;
+  } catch {
+    // Fall back to the direct child when the process group is already gone.
   }
 
   child.kill(signal);
@@ -732,18 +772,42 @@ function isProcessRunning(pid: number): boolean {
 // its live provider subprocesses orphaned: an OS process does not exit just
 // because its parent did, it is simply reparented and keeps running.
 export function signalProcessTree(pid: number, signal: NodeJS.Signals): void {
-  if (process.platform !== "win32") {
-    try {
-      process.kill(-pid, signal);
-      return;
-    } catch {
-      // Fall back to the direct pid: the process group may already be
-      // gone, or (defensively) this pid was not actually a group leader.
-    }
+  if (process.platform === "win32") {
+    killWindowsProcessTree(pid, signal === "SIGKILL");
+    return;
+  }
+
+  try {
+    process.kill(-pid, signal);
+    return;
+  } catch {
+    // Fall back to the direct pid: the process group may already be
+    // gone, or (defensively) this pid was not actually a group leader.
   }
 
   try {
     process.kill(pid, signal);
+  } catch {
+    // Process already exited.
+  }
+}
+
+function killWindowsProcessTree(pid: number, force: boolean): void {
+  const args = ["/PID", String(pid), "/T"];
+  if (force) {
+    args.push("/F");
+  }
+
+  const result = spawnSync("taskkill", args, {
+    stdio: "ignore",
+    windowsHide: true
+  });
+  if (result.status === 0) {
+    return;
+  }
+
+  try {
+    process.kill(pid, force ? "SIGKILL" : "SIGTERM");
   } catch {
     // Process already exited.
   }

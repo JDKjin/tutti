@@ -3,9 +3,12 @@ package agentsidecar
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -13,6 +16,9 @@ import (
 const (
 	codexProjectRootMarkersDisabledConfig = `project_root_markers = []`
 )
+
+var createSymlink = os.Symlink
+var createDirectoryJunction = createPlatformDirectoryJunction
 
 type CodexPreparer struct{}
 
@@ -123,10 +129,8 @@ func exposeUserCodexFiles(codexHome string) error {
 		if _, err := os.Lstat(target); err == nil {
 			continue
 		}
-		if err := os.Symlink(source, target); err != nil {
-			if copyErr := copyFile(source, target, 0o600); copyErr != nil {
-				return fmt.Errorf("expose codex %s: symlink failed: %v; copy failed: %w", name, err, copyErr)
-			}
+		if err := linkOrCopyPath(source, target, 0o600); err != nil {
+			return fmt.Errorf("expose codex %s: %w", name, err)
 		}
 	}
 	if err := exposeUserCodexPluginState(codexHome, userCodexHome); err != nil {
@@ -181,7 +185,7 @@ func exposeCodexImportedRolloutFile(codexHome string, sourcePath string) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 		return fmt.Errorf("create codex imported rollout parent dir: %w", err)
 	}
-	if err := os.Symlink(sourcePath, target); err != nil {
+	if err := linkOrCopyPath(sourcePath, target, 0o600); err != nil {
 		return fmt.Errorf("expose codex imported rollout file: %w", err)
 	}
 	return nil
@@ -204,11 +208,181 @@ func exposeUserCodexPluginState(codexHome string, userCodexHome string) error {
 		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 			return fmt.Errorf("create codex plugin state parent: %w", err)
 		}
-		if err := os.Symlink(source, target); err != nil {
+		if err := linkOrCopyPath(source, target, 0o600); err != nil {
 			return fmt.Errorf("expose codex plugin state %s: %w", rel, err)
 		}
 	}
 	return nil
+}
+
+func linkOrCopyPath(source string, target string, fileMode os.FileMode) error {
+	symlinkErr := createSymlink(source, target)
+	if symlinkErr == nil {
+		return nil
+	}
+	info, statErr := os.Stat(source)
+	if statErr != nil {
+		return fmt.Errorf("symlink failed: %v; inspect source failed: %w", symlinkErr, statErr)
+	}
+	var junctionErr error
+	if info.IsDir() {
+		junctionErr = createDirectoryJunction(source, target)
+		if junctionErr == nil {
+			return nil
+		}
+	}
+	copyErr := copyPath(source, target, fileMode)
+	if copyErr == nil {
+		return nil
+	}
+	if junctionErr != nil {
+		return fmt.Errorf("symlink failed: %v; junction failed: %v; copy failed: %w", symlinkErr, junctionErr, copyErr)
+	}
+	return fmt.Errorf("symlink failed: %v; copy failed: %w", symlinkErr, copyErr)
+}
+
+func createPlatformDirectoryJunction(source string, target string) error {
+	if runtime.GOOS != "windows" {
+		return fmt.Errorf("directory junction unsupported on %s", runtime.GOOS)
+	}
+	info, err := os.Stat(source)
+	if err != nil {
+		return fmt.Errorf("inspect junction source: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("junction source is not a directory: %s", source)
+	}
+	absoluteSource, err := filepath.Abs(source)
+	if err != nil {
+		return fmt.Errorf("resolve junction source: %w", err)
+	}
+	absoluteTarget, err := filepath.Abs(target)
+	if err != nil {
+		return fmt.Errorf("resolve junction target: %w", err)
+	}
+	if sameFilePath(absoluteSource, absoluteTarget) {
+		return fmt.Errorf("junction source and target are the same: %s", absoluteSource)
+	}
+	if err := os.MkdirAll(filepath.Dir(absoluteTarget), 0o700); err != nil {
+		return fmt.Errorf("create junction parent: %w", err)
+	}
+	command := exec.Command("cmd", "/c", "mklink", "/J", absoluteTarget, absoluteSource)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		details := strings.TrimSpace(string(output))
+		if details != "" {
+			return fmt.Errorf("mklink /J failed: %w: %s", err, details)
+		}
+		return fmt.Errorf("mklink /J failed: %w", err)
+	}
+	return nil
+}
+
+func copyPath(source string, target string, fileMode os.FileMode) error {
+	info, err := os.Stat(source)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return copyDirectory(source, target)
+	}
+	return copyFile(source, target, fileMode)
+}
+
+func copyDirectory(sourceDir string, targetDir string) error {
+	sourceDir = filepath.Clean(sourceDir)
+	targetDir = filepath.Clean(targetDir)
+	return filepath.WalkDir(sourceDir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		relativePath, err := filepath.Rel(sourceDir, path)
+		if err != nil {
+			return fmt.Errorf("resolve codex copy relative path: %w", err)
+		}
+		targetPath := targetDir
+		if relativePath != "." {
+			targetPath = filepath.Join(targetDir, relativePath)
+		}
+		if relativePath != "." {
+			handled, skipDir, err := copyLinkedPathIfNeeded(sourceDir, path, targetPath)
+			if err != nil {
+				return err
+			}
+			if handled {
+				if skipDir {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("read codex copy file info: %w", err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
+		if entry.IsDir() {
+			return os.MkdirAll(targetPath, info.Mode().Perm())
+		}
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+			return fmt.Errorf("create codex copy target parent: %w", err)
+		}
+		if err := copyFile(path, targetPath, info.Mode().Perm()); err != nil {
+			return fmt.Errorf("copy codex file %s: %w", relativePath, err)
+		}
+		return nil
+	})
+}
+
+func copyLinkedPathIfNeeded(root string, sourcePath string, targetPath string) (bool, bool, error) {
+	resolvedPath, err := filepath.EvalSymlinks(sourcePath)
+	if err != nil || sameFilePath(resolvedPath, sourcePath) {
+		linkTarget, linkErr := os.Readlink(sourcePath)
+		if linkErr != nil || strings.TrimSpace(linkTarget) == "" {
+			return false, false, nil
+		}
+		if filepath.IsAbs(linkTarget) {
+			resolvedPath = linkTarget
+		} else {
+			resolvedPath = filepath.Join(filepath.Dir(sourcePath), linkTarget)
+		}
+	}
+	info, err := os.Stat(resolvedPath)
+	if err != nil {
+		return true, false, nil
+	}
+	if !pathWithinRoot(root, resolvedPath) {
+		return true, info.IsDir(), nil
+	}
+	if info.IsDir() {
+		if err := copyDirectory(resolvedPath, targetPath); err != nil {
+			return true, true, err
+		}
+		return true, true, nil
+	}
+	if err := copyFile(resolvedPath, targetPath, info.Mode().Perm()); err != nil {
+		return true, false, err
+	}
+	return true, false, nil
+}
+
+func sameFilePath(left string, right string) bool {
+	left = filepath.Clean(left)
+	right = filepath.Clean(right)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(left, right)
+	}
+	return left == right
+}
+
+func pathWithinRoot(root string, candidate string) bool {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(candidate))
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func exposeUserCodexConfig(codexHome string, userCodexHome string) error {
@@ -654,7 +828,7 @@ func exposeUserCodexSkillFolders(targetRoot string, input PrepareInput) error {
 		} else if !os.IsNotExist(err) {
 			return fmt.Errorf("inspect codex skill %s: %w", name, err)
 		}
-		if err := os.Symlink(source, target); err != nil {
+		if err := linkOrCopyPath(source, target, 0o600); err != nil {
 			return fmt.Errorf("expose codex skill %s: %w", name, err)
 		}
 	}
@@ -686,9 +860,24 @@ func shouldSkipUserCodexSkillForTuttiBrowserUse(name string, input PrepareInput)
 }
 
 func copyFile(source string, target string, mode os.FileMode) error {
-	content, err := os.ReadFile(source)
+	sourceFile, err := os.Open(source)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(target, content, mode)
+	defer func() {
+		_ = sourceFile.Close()
+	}()
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	targetFile, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(targetFile, sourceFile)
+	closeErr := targetFile.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
 }

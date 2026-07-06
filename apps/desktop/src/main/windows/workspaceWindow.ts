@@ -23,6 +23,7 @@ import {
 } from "../../shared/contracts/ipc";
 import { installWorkspaceWindowDevelopmentReloadShortcut } from "./workspaceWindowReload.ts";
 import { resolvePackagedWorkspaceRendererIndexPath } from "./workspaceWindowPaths.ts";
+import { installWindowsWorkspaceWindowCloseChoice } from "./workspaceWindowCloseChoice.ts";
 
 export const workspaceAppBrowserPartitionPrefix = "persist:tutti-app:";
 
@@ -136,6 +137,11 @@ export function createWorkspaceWindow(
   workspaceWindows.add(workspaceWindow);
   workspaceWindow.once("closed", () => {
     workspaceWindows.delete(workspaceWindow);
+  });
+  installWindowsWorkspaceWindowCloseChoice(workspaceWindow, {
+    getWorkspaceWindows: () => Array.from(workspaceWindows),
+    locale: options.locale,
+    logger
   });
 
   if (process.platform === "darwin") {

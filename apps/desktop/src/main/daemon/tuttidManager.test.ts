@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   isLikelyTuttidProcess,
+  parseWindowsTasklistImageName,
   resolveBrowserMcpDaemonEnv,
   resolveClaudeSDKSidecarDaemonEnv,
   resolveLaunchSpec,
@@ -220,8 +221,8 @@ test("resolveManagedDaemonProcessEnv seeds the managed runtime cache root", () =
       sessionID: "session-1"
     });
     assert.equal(
-      got.TUTTI_APP_RUNTIME_CACHE_ROOT?.endsWith("/app-runtimes"),
-      true
+      got.TUTTI_APP_RUNTIME_CACHE_ROOT?.split(/[\\/]/u).at(-1),
+      "app-runtimes"
     );
   } finally {
     restoreEnv(previousEnv);
@@ -314,12 +315,33 @@ test("resolveLaunchSpec honors TUTTID_BIN override", () => {
 test("isLikelyTuttidProcess only matches tuttid executables", () => {
   assert.equal(isLikelyTuttidProcess("/tmp/tuttid"), true);
   assert.equal(
+    isLikelyTuttidProcess("C:\\Program Files\\Tutti\\tuttid.exe"),
+    true
+  );
+  assert.equal(
+    isLikelyTuttidProcess('"C:\\Program Files\\Tutti\\tuttid.exe"'),
+    true
+  );
+  assert.equal(
     isLikelyTuttidProcess(join(repoRoot, "apps/desktop/build/tuttid/tuttid")),
     true
   );
   assert.equal(isLikelyTuttidProcess("node tuttidManager.js"), false);
   assert.equal(isLikelyTuttidProcess("/tmp/not-tuttid"), false);
   assert.equal(isLikelyTuttidProcess(""), false);
+});
+
+test("parseWindowsTasklistImageName decodes tasklist csv output", () => {
+  assert.equal(
+    parseWindowsTasklistImageName(
+      '"tuttid.exe","1234","Console","1","12,345 K"'
+    ),
+    "tuttid.exe"
+  );
+  assert.equal(
+    parseWindowsTasklistImageName("INFO: No tasks are running"),
+    null
+  );
 });
 
 // Regression coverage for the "lingering codex server processes" report:

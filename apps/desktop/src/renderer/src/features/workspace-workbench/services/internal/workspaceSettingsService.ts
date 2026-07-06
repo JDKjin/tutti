@@ -113,6 +113,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     options?: WorkspaceSettingsOpenOptions
   ): void {
     this.syncWorkspace(workspace);
+    const previousActiveSection = this.store.activeSection;
     const managedModelsRequested = options?.pane === "managed-models";
     if (managedModelsRequested) {
       this.store.activeSection = "apps";
@@ -133,10 +134,9 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
 
     if (!wasOpen) {
       this.reportSettingsOpened();
-      void this.refreshDeveloperLogs();
-      void this.refreshManagedModelProviders();
-    } else if (this.store.activeSection === "apps") {
-      void this.refreshManagedModelProviders();
+    }
+    if (!wasOpen || previousActiveSection !== this.store.activeSection) {
+      this.refreshActiveSectionData();
     }
   }
 
@@ -215,9 +215,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
 
     this.store.activeSection = sectionID;
     this.reportSettingsSectionSwitched(sectionID);
-    if (sectionID === "apps") {
-      void this.refreshManagedModelProviders();
-    }
+    this.refreshActiveSectionData();
   }
 
   setDeveloperPanelVisible(visible: boolean): void {
@@ -665,6 +663,10 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   }
 
   async refreshDeveloperLogs(): Promise<void> {
+    if (this.store.developerLogs.loading) {
+      return;
+    }
+
     const sequence = this.startDeveloperLogsLoad();
 
     try {
@@ -975,6 +977,20 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     const next = { ...this.store.managedModels.feedback };
     delete next[providerID];
     this.store.managedModels.feedback = next;
+  }
+
+  private refreshActiveSectionData(): void {
+    if (this.store.activeSection === "apps") {
+      void this.refreshManagedModelProviders();
+      return;
+    }
+
+    if (
+      this.store.activeSection === "about" ||
+      this.store.activeSection === "developer"
+    ) {
+      void this.refreshDeveloperLogs();
+    }
   }
 
   private startDeveloperLogsLoad(): number {

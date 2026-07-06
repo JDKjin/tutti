@@ -78,7 +78,7 @@ test("macOS install guard quits when the user declines installation", async () =
   assert.equal(quitCalls, 1);
   assert.equal(shownDialogs.length, 1);
   assert.deepEqual(shownDialogs[0]?.buttons, [
-    "Move to Applications and Relaunch",
+    "Move to Windows app folder and Relaunch",
     "Quit"
   ]);
 });
@@ -139,9 +139,12 @@ test("macOS install guard reveals the app bundle when automatic move fails", asy
   assert.deepEqual(revealedPaths, ["/Volumes/Tutti/Tutti.app"]);
   assert.equal(shownDialogs.length, 2);
   assert.deepEqual(shownDialogs[0]?.buttons, [
-    "移动到 Applications 并重新打开",
+    "移动到 Windows 应用目录并重新打开",
     "退出"
   ]);
-  assert.deepEqual(shownDialogs[1]?.buttons, ["在 Finder 中显示", "退出"]);
+  assert.deepEqual(shownDialogs[1]?.buttons, [
+    "在文件资源管理器中显示",
+    "退出"
+  ]);
   assert.equal(shownDialogs[1]?.message, "请手动移动 Tutti");
 });

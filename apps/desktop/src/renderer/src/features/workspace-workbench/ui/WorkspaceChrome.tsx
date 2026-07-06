@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -57,7 +59,6 @@ import { cn } from "@renderer/lib/format";
 import { ExternalAgentSessionImportPrompt } from "./ExternalAgentSessionImportPrompt";
 import { ExternalAgentSessionImportWizard } from "./ExternalAgentSessionImportWizard";
 import { WorkspaceFeedbackGroupPopover } from "./WorkspaceFeedbackGroupPopover";
-import { WorkspaceSettingsPanel } from "./WorkspaceSettingsPanel";
 import { useWorkspaceChromeState } from "./useWorkspaceChromeState";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
@@ -88,6 +89,10 @@ import type {
 
 const MESSAGE_CENTER_SUMMARY_MESSAGE_LIMIT = 20;
 const MESSAGE_CENTER_SUMMARY_PREFETCH_ITEM_LIMIT = 12;
+const LazyWorkspaceSettingsPanel = lazy(async () => {
+  const module = await import("./WorkspaceSettingsPanel");
+  return { default: module.WorkspaceSettingsPanel };
+});
 const MESSAGE_CENTER_VISIBLE_HISTORY_MS = 7 * 24 * 60 * 60 * 1000;
 const WORKSPACE_AGENT_DECISION_TOAST_DURATION = Infinity;
 const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_INSET_PX = 16;
@@ -1127,14 +1132,47 @@ function WorkspaceSettingsTrigger({
         </TooltipTrigger>
         <TooltipContent>{t("workspace.settings.trigger")}</TooltipContent>
       </Tooltip>
-      <WorkspaceSettingsPanel
-        onOpenExternalAgentImport={onOpenExternalAgentImport}
-        onSelectWallpaper={onSelectWallpaper}
-        onSelectWallpaperDisplayMode={onSelectWallpaperDisplayMode}
-        selectedWallpaperDisplayMode={selectedWallpaperDisplayMode}
-        selectedWallpaperID={selectedWallpaperID}
-        workspace={workspace}
-      />
+      {settingsState.open ? (
+        <Suspense fallback={<WorkspaceSettingsPanelLoading />}>
+          <LazyWorkspaceSettingsPanel
+            onOpenExternalAgentImport={onOpenExternalAgentImport}
+            onSelectWallpaper={onSelectWallpaper}
+            onSelectWallpaperDisplayMode={onSelectWallpaperDisplayMode}
+            selectedWallpaperDisplayMode={selectedWallpaperDisplayMode}
+            selectedWallpaperID={selectedWallpaperID}
+            workspace={workspace}
+          />
+        </Suspense>
+      ) : null}
     </>
+  );
+}
+
+function WorkspaceSettingsPanelLoading() {
+  const { t } = useTranslation();
+  return (
+    <div
+      className="fixed inset-0 grid place-items-center bg-[var(--backdrop)] supports-backdrop-filter:backdrop-blur-sm [-webkit-app-region:no-drag]"
+      data-workspace-settings-backdrop="true"
+      style={{ zIndex: "var(--z-panel)" }}
+    >
+      <section
+        aria-busy="true"
+        aria-live="polite"
+        aria-modal="true"
+        className="relative z-[1] grid h-[160px] w-[min(360px,calc(100vw-40px))] place-items-center rounded-2xl border border-[var(--border-1)] bg-[var(--background-fronted)] px-6 text-center text-[var(--text-primary)] shadow-panel"
+        role="dialog"
+      >
+        <div className="flex flex-col items-center gap-3">
+          <div className="size-5 animate-spin rounded-full border-2 border-[var(--border-2)] border-t-[var(--text-primary)]" />
+          <div className="text-[14px] font-medium">
+            {t("workspace.settings.title")}
+          </div>
+          <div className="text-[12px] text-[var(--text-secondary)]">
+            {t("common.loading")}
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }

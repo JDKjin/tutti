@@ -426,6 +426,8 @@ export function createAppUpdateService(
   const devUpdatesEnabled = envFlagEnabled("TUTTI_APP_UPDATE_DEV");
   const appVersion = app?.getVersion?.() ?? "0.0.0";
   const currentVersion = resolveCurrentVersion(appVersion, isPackaged);
+  const isLocalPackagedBuild =
+    isPackaged && appVersion === "0.0.0" && !devUpdatesEnabled;
   const prefixedReleaseResolver =
     options.prefixedReleaseResolver === undefined
       ? createGitHubPrefixedDesktopReleaseResolver()
@@ -440,12 +442,15 @@ export function createAppUpdateService(
     });
   let supportsUpdates =
     options.supportsUpdates ??
-    ((process.env.NODE_ENV !== "test" && isPackaged) || devUpdatesEnabled);
+    ((process.env.NODE_ENV !== "test" && isPackaged && !isLocalPackagedBuild) ||
+      devUpdatesEnabled);
   let unsupportedMessage =
     options.unsupportedMessage ??
-    (process.env.NODE_ENV === "test"
-      ? "Update checks are disabled in tests."
-      : "Update checks are only available in packaged builds.");
+    (isLocalPackagedBuild
+      ? "Update checks are disabled for local 0.0.0 builds."
+      : process.env.NODE_ENV === "test"
+        ? "Update checks are disabled in tests."
+        : "Update checks are only available in packaged builds.");
 
   if (
     options.supportsUpdates === undefined &&

@@ -144,6 +144,36 @@ test("WorkspaceSettingsService opens agent settings with a focused anchor", () =
   assert.equal(service.store.generalFocusRequestID, 2);
 });
 
+test("WorkspaceSettingsService does not load hidden settings data on default open", async () => {
+  let logRefreshes = 0;
+  let managedProviderRefreshes = 0;
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      getLogsState: async () => {
+        logRefreshes += 1;
+        return {
+          desktopVersion: "0.0.0",
+          files: [],
+          logsDir: "",
+          totalFiles: 0,
+          totalSizeBytes: 0
+        };
+      },
+      listManagedModelProviders: async () => {
+        managedProviderRefreshes += 1;
+        return [];
+      }
+    })
+  });
+
+  service.openPanel({ id: "workspace-1" });
+  await Promise.resolve();
+
+  assert.equal(service.store.activeSection, "general");
+  assert.equal(logRefreshes, 0);
+  assert.equal(managedProviderRefreshes, 0);
+});
+
 test("WorkspaceSettingsService tolerates provider configs with null models", async () => {
   const notifications = createNotificationRecorder();
   const service = new WorkspaceSettingsService(
@@ -169,7 +199,7 @@ test("WorkspaceSettingsService tolerates provider configs with null models", asy
     notifications.service
   );
 
-  service.openPanel({ id: "workspace-1" });
+  openManagedModelsSection(service);
   await waitFor(() => service.store.managedModels.loading === false);
 
   const agnesProvider = service.store.managedModels.providers.find(
@@ -195,7 +225,7 @@ test("WorkspaceSettingsService echoes saved managed provider API keys", async ()
     })
   });
 
-  service.openPanel({ id: "workspace-1" });
+  openManagedModelsSection(service);
   await waitFor(() => service.store.managedModels.loading === false);
 
   const agnesProvider = service.store.managedModels.providers.find(
@@ -227,7 +257,7 @@ test("WorkspaceSettingsService fills detected managed provider models", async ()
     })
   });
 
-  service.openPanel({ id: "workspace-1" });
+  openManagedModelsSection(service);
   await waitFor(() => service.store.managedModels.loading === false);
   await service.detectManagedModelProviderModels("agnes");
 
@@ -257,7 +287,7 @@ test("WorkspaceSettingsService lists only saved managed providers", async () => 
     })
   });
 
-  service.openPanel({ id: "workspace-1" });
+  openManagedModelsSection(service);
   await waitFor(() => service.store.managedModels.loading === false);
 
   assert.deepEqual(
@@ -292,7 +322,7 @@ test("WorkspaceSettingsService refuses a draft for a configured provider", async
     })
   });
 
-  service.openPanel({ id: "workspace-1" });
+  openManagedModelsSection(service);
   await waitFor(() => service.store.managedModels.loading === false);
   service.beginManagedModelProviderDraft("openai");
 
@@ -320,7 +350,7 @@ test("WorkspaceSettingsService saves a draft into the provider list", async () =
     client: createWorkspaceSettingsClient({})
   });
 
-  service.openPanel({ id: "workspace-1" });
+  openManagedModelsSection(service);
   await waitFor(() => service.store.managedModels.loading === false);
   service.beginManagedModelProviderDraft("openai");
   service.updateManagedModelDraft({
@@ -370,7 +400,7 @@ test("WorkspaceSettingsService persists a provider toggle immediately", async ()
     })
   });
 
-  service.openPanel({ id: "workspace-1" });
+  openManagedModelsSection(service);
   await waitFor(() => service.store.managedModels.loading === false);
   await service.setManagedModelProviderEnabled("openai", false);
 
@@ -403,7 +433,7 @@ test("WorkspaceSettingsService records an inline test result without a toast", a
     notifications.service
   );
 
-  service.openPanel({ id: "workspace-1" });
+  openManagedModelsSection(service);
   await waitFor(() => service.store.managedModels.loading === false);
   await service.testManagedModelProvider("openai");
 
@@ -429,7 +459,7 @@ test("WorkspaceSettingsService records an inline test failure", async () => {
     })
   });
 
-  service.openPanel({ id: "workspace-1" });
+  openManagedModelsSection(service);
   await waitFor(() => service.store.managedModels.loading === false);
   await service.testManagedModelProvider("openai");
 
@@ -452,7 +482,7 @@ test("WorkspaceSettingsService flags an empty model detection inline", async () 
     })
   });
 
-  service.openPanel({ id: "workspace-1" });
+  openManagedModelsSection(service);
   await waitFor(() => service.store.managedModels.loading === false);
   await service.detectManagedModelProviderModels("openai");
 
@@ -480,7 +510,7 @@ test("WorkspaceSettingsService clears feedback when a provider is edited", async
     })
   });
 
-  service.openPanel({ id: "workspace-1" });
+  openManagedModelsSection(service);
   await waitFor(() => service.store.managedModels.loading === false);
   await service.testManagedModelProvider("openai");
   assert.equal(service.store.managedModels.feedback.openai?.kind, "testFailed");
@@ -507,7 +537,7 @@ test("WorkspaceSettingsService blocks a draft save without required fields", asy
     })
   });
 
-  service.openPanel({ id: "workspace-1" });
+  openManagedModelsSection(service);
   await waitFor(() => service.store.managedModels.loading === false);
   service.beginManagedModelProviderDraft("openai");
   service.updateManagedModelDraft({ baseUrl: "" });
@@ -544,7 +574,7 @@ test("WorkspaceSettingsService records a save failure inline without a toast", a
     notifications.service
   );
 
-  service.openPanel({ id: "workspace-1" });
+  openManagedModelsSection(service);
   await waitFor(() => service.store.managedModels.loading === false);
   const provider = service.store.managedModels.providers.find(
     (candidate) => candidate.provider === "openai"
@@ -579,7 +609,7 @@ test("WorkspaceSettingsService still toasts when a provider toggle fails", async
     notifications.service
   );
 
-  service.openPanel({ id: "workspace-1" });
+  openManagedModelsSection(service);
   await waitFor(() => service.store.managedModels.loading === false);
   await service.setManagedModelProviderEnabled("openai", false);
 
@@ -606,14 +636,14 @@ test("WorkspaceSettingsService drops a removed provider from the list", async ()
     })
   });
 
-  service.openPanel({ id: "workspace-1" });
+  openManagedModelsSection(service);
   await waitFor(() => service.store.managedModels.loading === false);
   await service.removeManagedModelProvider("openai");
 
   assert.deepEqual(service.store.managedModels.providers, []);
 });
 
-test("WorkspaceSettingsService refreshes developer logs when opening the panel", async () => {
+test("WorkspaceSettingsService refreshes developer logs when opening the about section", async () => {
   let logRefreshes = 0;
   const service = new WorkspaceSettingsService({
     client: createWorkspaceSettingsClient({
@@ -631,7 +661,7 @@ test("WorkspaceSettingsService refreshes developer logs when opening the panel",
     })
   });
 
-  service.openPanel({ id: "workspace-1" });
+  openDeveloperLogsSection(service);
   await waitFor(() => service.store.developerLogs.loading === false);
 
   assert.equal(logRefreshes, 1);
@@ -656,9 +686,9 @@ test("WorkspaceSettingsService does not restart log refresh while already open",
     })
   });
 
-  service.openPanel({ id: "workspace-1" });
+  openDeveloperLogsSection(service);
   await waitFor(() => service.store.developerLogs.loading === false);
-  service.openPanel({ id: "workspace-1" });
+  service.openPanel({ id: "workspace-1" }, { section: "about" });
 
   assert.equal(logRefreshes, 1);
 });
@@ -1227,4 +1257,14 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   }
 
   assert.fail("Timed out waiting for condition");
+}
+
+function openManagedModelsSection(service: WorkspaceSettingsService): void {
+  service.openPanel({ id: "workspace-1" });
+  service.selectSection("apps");
+}
+
+function openDeveloperLogsSection(service: WorkspaceSettingsService): void {
+  service.openPanel({ id: "workspace-1" });
+  service.selectSection("about");
 }
